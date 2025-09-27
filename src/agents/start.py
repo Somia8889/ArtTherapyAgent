@@ -1,3 +1,4 @@
+import json
 from ..apimodel import APIModel
 
 from typing import Dict, List, Optional
@@ -55,24 +56,56 @@ class Start:
         self.transcript.append({"role": "agent", "text": reply})
         return reply
 
+    # def check_ready(self, user_input: str) -> bool:
+    #     """
+    #     Use LLM to decide if the user is ready to begin drawing
+    #     """
+    #     prompt = (
+    #         "You are analyzing a user's response in an art therapy session.\n"
+    #         "Determine if the user seems ready to begin a drawing activity.\n"
+    #         "Criteria for readiness: The user expresses trust, willingness, or a clear goal for the session.\n\n"
+    #         f"User input: \"{user_input}\"\n\n"
+    #         "Return only one word: true or false."
+    #     )
+
+    #     response = self.llm.chat(prompt=prompt, temperature=0.7, max_tokens=32).strip().lower()
+
+    #     if "true" in response:
+    #         self.trust_established = True
+    #         return True
+    #     else:
+    #         self.trust_established = False
+    #         return False
+
+    # 建议的 check_ready 优化
     def check_ready(self, user_input: str) -> bool:
         """
-        Use LLM to decide if the user is ready to begin drawing
+        Use LLM to decide if the user is ready to begin drawing.
         """
+        if not user_input: # Handle the initial call where user_input is None
+            return False
+
         prompt = (
-            "You are analyzing a user's response in an art therapy session.\n"
-            "Determine if the user seems ready to begin a drawing activity.\n"
-            "Criteria for readiness: The user expresses trust, willingness, or a clear goal for the session.\n\n"
-            f"User input: \"{user_input}\"\n\n"
-            "Return only one word: true or false."
+            "You are an analyzer for an art therapy session. Your task is to determine if the user is ready to start a drawing activity based on their last message.\n"
+            "Criteria for readiness: The user expresses a clear goal, shows willingness, or gives explicit consent to proceed (e.g., 'I'm ready', 'Okay', 'Let's start').\n\n"
+            f"User's last message: \"{user_input}\"\n\n"
+            "Based on this, should the session proceed to the drawing phase? Respond with a single JSON object containing one key 'ready' with a boolean value (true or false)."
+            "Example: {\"ready\": true}"
         )
 
-        response = self.llm.chat(prompt=prompt, temperature=0.7, max_tokens=32).strip().lower()
-
-        if "true" in response:
-            self.trust_established = True
-            return True
-        else:
+        # In a real scenario, you would add a loop or error handling for JSON parsing
+        try:
+            response_str = self.llm.chat(prompt=prompt, temperature=0.0, max_tokens=32).strip()
+            response_json = json.loads(response_str)
+            
+            if response_json.get("ready", False):
+                self.trust_established = True
+                return True
+            else:
+                self.trust_established = False
+                return False
+        except (json.JSONDecodeError, AttributeError):
+            # If parsing fails, fall back to a safer default (not ready)
             self.trust_established = False
             return False
 
@@ -87,7 +120,8 @@ class Start:
             "- personality: a short description of the user's personality or communication style\n"
             "- requirement: the user's need or goal for art therapy\n\n"
             f"Conversation:\n{history_text}\n\n"
-            "Return strictly in JSON format."
+            # "Return strictly in JSON format."
+            "Respond with ONLY the JSON object and nothing else. Example response: {\"personality\": \"direct\", \"requirement\": \"relieve stress\"}"
         )
 
         return self.llm.chat(prompt=prompt, temperature=0.7, max_tokens=256)
